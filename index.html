@@ -185,9 +185,9 @@ function buildDisc(k){
   if(c.speed) setDef(k+'-sp',c.def.sp); else { setDef(k+'-pm',c.def.pm); setDef(k+'-ps',c.def.ps); }
   if(!saved[k+'-mode']) saved[k+'-mode']=c.mode;
 
-  sec.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{ saved[k+'-mode']=b.dataset.m; persist(); calcDisc(k); });
-  sec.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{ $(k+'-dist').value=String(b.dataset.d).replace('.',','); save($(k+'-dist')); calcDisc(k); });
-  sec.querySelectorAll('input').forEach(i=>i.addEventListener('input',()=>{ save(i); calcDisc(k); }));
+  sec.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{ saved[k+'-mode']=b.dataset.m; persist(); calcDisc(k,true); });
+  sec.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{ $(k+'-dist').value=String(b.dataset.d).replace('.',','); save($(k+'-dist')); calcDisc(k,true); });
+  sec.querySelectorAll('input').forEach(i=>i.addEventListener('input',()=>{ save(i); calcDisc(k,true); }));
 }
 
 function readTime(p){
@@ -201,7 +201,7 @@ function readPer(k){ // Sekunden pro Basis-Einheit (1 km bzw. 100 m)
   const t=readTime(k+'-p'); return t;
 }
 
-function calcDisc(k){
+function calcDisc(k,sync){
   const c=D[k], mode=saved[k+'-mode'];
   const sec=$('v-'+c.view);
   sec.querySelectorAll('.seg button').forEach(b=>b.classList.toggle('on',b.dataset.m===mode));
@@ -234,6 +234,7 @@ function calcDisc(k){
     if(mode==='dist'){ lbl='Deine Strecke'; main=fmtNum(d,c.base===100?0:2)+' '+c.du; sub='in '+fmtTime(t)+' bei '+paceTxt().main; }
     res.innerHTML=`<div class="lbl">${lbl}</div><div class="big">${main}</div><div class="small">${sub}</div>`;
   }
+  if(sync && per>0) syncTri(k,per);
 
   const tab=$(k+'-tab');
   if(per>0){
@@ -241,6 +242,17 @@ function calcDisc(k){
     tab.innerHTML=`<h2>Bei ${c.speed?'diesem Tempo':'dieser Pace'}</h2><table>${
       c.presets.map(p=>`<tr><td>${p[0]}</td><td>${fmtTime(per*p[1]/c.base)}</td></tr>`).join('')}</table>`;
   } else tab.style.display='none';
+}
+
+/* Pace der Einzelseiten in den Triathlon-Rechner übernehmen */
+function syncTri(k,per){
+  const set=(id,v)=>{ const el=$(id); if(el){ el.value=v; save(el); } };
+  if(k==='bike'){ set('tri-bsp',fmtNum(3600/per,1)); }
+  else {
+    const p=k==='run'?'tri-rp':'tri-sp', r=Math.round(per);
+    set(p+'m',String(Math.floor(r/60))); set(p+'s',pad(r%60));
+  }
+  calcTri();
 }
 
 /* ---------- Triathlon ---------- */
@@ -260,19 +272,37 @@ function buildTri(){
         <div class="field"><label>🏃 Laufen</label><div class="row"><input id="tri-rd" inputmode="decimal"><span class="unit">km</span></div></div>
       </div>
     </div>
-    <div class="card">
+    <div class="seg-label">Was willst du eintragen?</div>
+    <div class="seg" id="tri-seg">
+      <button data-m="pace">Paces</button>
+      <button data-m="time">Zielzeiten</button>
+    </div>
+    <div class="card" id="tri-pace-card">
       <h2>Deine Paces</h2>
       <div class="field" style="--accent:var(--swim)"><label>🏊 Schwimm-Pace</label>${paceInputs('tri-sp','/100 m')}</div>
-      <div class="field" style="--accent:var(--t)"><label>Wechsel 1 (T1)</label>${paceInputs('tri-t1','min')}</div>
       <div class="field" style="--accent:var(--bike)"><label>🚴 Rad-Tempo</label><div class="row"><input id="tri-bsp" class="w-num" inputmode="decimal"><span class="unit">km/h</span></div></div>
-      <div class="field" style="--accent:var(--t)"><label>Wechsel 2 (T2)</label>${paceInputs('tri-t2','min')}</div>
       <div class="field" style="--accent:var(--run)"><label>🏃 Lauf-Pace</label>${paceInputs('tri-rp','/km')}</div>
+    </div>
+    <div class="card" id="tri-time-card">
+      <h2>Deine Zielzeiten</h2>
+      <div class="field" style="--accent:var(--swim)"><label>🏊 Schwimmen</label>${timeInputs('tri-st')}</div>
+      <div class="field" style="--accent:var(--bike)"><label>🚴 Rad</label>${timeInputs('tri-bt')}</div>
+      <div class="field" style="--accent:var(--run)"><label>🏃 Laufen</label>${timeInputs('tri-rt')}</div>
+    </div>
+    <div class="card" id="tri-need"></div>
+    <div class="card">
+      <h2>Wechselzeiten</h2>
+      <div class="field" style="--accent:var(--t)"><label>Wechsel 1 (T1)</label>${paceInputs('tri-t1','min')}</div>
+      <div class="field" style="--accent:var(--t)"><label>Wechsel 2 (T2)</label>${paceInputs('tri-t2','min')}</div>
     </div>
     <p class="hint">Deine Eingaben bleiben auf diesem Gerät gespeichert.</p>`;
   app.appendChild(sec);
 
   const defs={'tri-sd':'1500','tri-bd':'40','tri-rd':'10','tri-spm':'2','tri-sps':'00','tri-t1m':'2','tri-t1s':'00',
-    'tri-bsp':'30','tri-t2m':'1','tri-t2s':'30','tri-rpm':'5','tri-rps':'30'};
+    'tri-bsp':'30','tri-t2m':'1','tri-t2s':'30','tri-rpm':'5','tri-rps':'30',
+    'tri-sth':'0','tri-stm':'30','tri-sts':'00','tri-bth':'1','tri-btm':'20','tri-bts':'00','tri-rth':'0','tri-rtm':'55','tri-rts':'00'};
+  if(!saved['tri-mode']) saved['tri-mode']='pace';
+  sec.querySelectorAll('#tri-seg button').forEach(b=>b.onclick=()=>{ saved['tri-mode']=b.dataset.m; persist(); calcTri(); });
   for(const id in defs) if(saved[id]===undefined) saved[id]=defs[id];
 
   sec.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{
@@ -285,11 +315,33 @@ function buildTri(){
 
 function calcTri(){
   const sd=num($('tri-sd').value), bd=num($('tri-bd').value), rd=num($('tri-rd').value);
-  const sp=readTime('tri-sp'), bsp=num($('tri-bsp').value), rp=readTime('tri-rp');
   const t1=readTime('tri-t1')||0, t2=readTime('tri-t2')||0;
-  const swim=(sd>0&&sp>0)?sp*sd/100:NaN;
-  const bike=(bd>0&&bsp>0)?bd/bsp*3600:NaN;
-  const run=(rd>0&&rp>0)?rp*rd:NaN;
+  const mode=saved['tri-mode']||'pace';
+  document.querySelectorAll('#tri-seg button').forEach(b=>b.classList.toggle('on',b.dataset.m===mode));
+  $('tri-pace-card').style.display=mode==='pace'?'':'none';
+  $('tri-time-card').style.display=mode==='time'?'':'none';
+  let swim,bike,run,sp,bsp,rp;
+  if(mode==='pace'){
+    sp=readTime('tri-sp'); bsp=num($('tri-bsp').value); rp=readTime('tri-rp');
+    swim=(sd>0&&sp>0)?sp*sd/100:NaN;
+    bike=(bd>0&&bsp>0)?bd/bsp*3600:NaN;
+    run=(rd>0&&rp>0)?rp*rd:NaN;
+  } else {
+    swim=readTime('tri-st'); bike=readTime('tri-bt'); run=readTime('tri-rt');
+    sp=(sd>0&&swim>0)?swim/(sd/100):NaN;
+    bsp=(bd>0&&bike>0)?bd/(bike/3600):NaN;
+    rp=(rd>0&&run>0)?run/rd:NaN;
+  }
+  const need=$('tri-need');
+  if(mode==='time'){
+    need.style.display='';
+    const r=(icon,name,col,main,sub)=>`<div class="leg"><span class="sw" style="background:${col}"></span><span class="n">${icon} ${name}</span><span class="d" style="min-width:auto">${main}</span><span class="c" style="min-width:auto">${sub}</span></div>`;
+    need.innerHTML=`<h2>Dafür brauchst du</h2><div class="legs">
+      ${r('🏊','Schwimmen','var(--swim)',sp>0?fmtPace(sp)+' /100 m':'–','')}
+      ${r('🚴','Rad','var(--bike)',bsp>0?fmtNum(bsp,1)+' km/h':'–',bsp>0?fmtPace(3600/bsp)+' /km':'')}
+      ${r('🏃','Laufen','var(--run)',rp>0?fmtPace(rp)+' /km':'–',rp>0?fmtNum(3600/rp,1)+' km/h':'')}
+    </div>`;
+  } else need.style.display='none';
 
   document.querySelectorAll('#v-triathlon .chip').forEach(b=>{
     const p=TRI[b.dataset.i]; b.classList.toggle('on',p[1]===sd&&p[2]===bd&&p[3]===rd);
@@ -316,7 +368,7 @@ function calcTri(){
   $('tri-res').innerHTML=`
     <div class="lbl">Gesamtzeit</div>
     <div class="big">${all?fmtTime(total):'–'}</div>
-    ${all?'':'<div class="small">Trag Distanzen und Paces unten ein</div>'}
+    ${all?'':'<div class="small">Trag Distanzen und '+(mode==='pace'?'Paces':'Zeiten')+' unten ein</div>'}
     <div class="bar" style="background:rgba(255,255,255,.3)">${bar}</div>
     <div class="legs" style="margin-top:8px;color:#fff">${rows.replace(/var\(--line\)/g,'')}</div>`;
 }
